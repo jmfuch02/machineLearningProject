@@ -1,0 +1,84 @@
+---
+title: 'Human Activity Recognition: Weight Lifting Exercises'
+author: "JF"
+date: "Tuesday, April 21, 2015"
+output: html_document
+---
+
+# Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this study, participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. Data was collected from from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The goal of this project is to create a machine learning algorithm that will predict how each excercise was done, based on the collected sensor data.
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+# R Code
+
+## Data Acquisition and Cleaning
+
+```{r, cache=TRUE, warning=FALSE, message=FALSE}
+library(caret)
+library(randomForest)
+library(RCurl)
+
+# Read in the data from the urls
+
+trainingUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingUrl<- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+download.file(trainingUrl, "training.csv")
+download.file(testingUrl, "testing.csv")
+```
+
+The raw data is split into training and test sets, each containing 160 variables. Not every observation in the dataset contains a value for all of the variables. In fact, there are some variables that contain no data. The first step is the clean both datasets.
+
+```{r}
+train <- read.csv("training.csv", na.strings = c("#DIV/0!", "NA"))
+test <- read.csv("testing.csv", na.strings = c("#DIV/0!", "NA"))
+
+# Remove some columns that were all NA
+cleanTrain <- train[,colSums(is.na(train)) != nrow(train)]
+cleanTrain <- na.omit(cleanTrain)
+cleanTest <- test[,colSums(is.na(test)) != nrow(test)]
+cleanTest <- na.omit(cleanTest)
+```
+
+After removing rows and columns that contain "NA", the test set does not have the same dimensions as the training set. Therefore, I intersect the column names and only keep the similar ones.
+
+```{r}
+# More columns are removed from the test data
+# So restrict the training set to those columns as well
+cleanTrain <- cleanTrain[,c(intersect(names(cleanTrain), names(cleanTest)), "classe")]
+cleanTest <- cleanTest[,c(intersect(names(cleanTrain), names(cleanTest)), "problem_id")]
+```
+
+Additonally, any extraneous variables are removed so as not to confuse the machine learning algorithm.
+
+```{r}
+# Get rid of extra columns like time, because they don't matter and they confuse the random forest algorithm anyway.
+cleanTrain <- subset(cleanTrain, select = -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+cleanTest <- subset(cleanTest, select = -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+```
+
+## Modeling
+
+In the paper, the random forest method is used as the most accurate machine learning algorithm. I found that using the "train" function rather than the "randomForest" function delivered better results. I had some trouble getting the training and test sets to match up using the "randomForest" function.
+
+```{r, cache=TRUE}
+# Create the model
+modelTrainRF <- train(classe ~ ., data = cleanTrain, method = "rf", prox=TRUE)
+```
+
+```{r}
+finalMod <- modelTrainRF$finalModel
+finalMod
+```
+
+In a random forest model, cross-validation is done internally. The expected out of sample error is equivalent to the out-of-bag (OOB) error. As seen here, we expect a 24.88% error rate.
+
+Now I can use this model to predict the values in the training set, which I will hide here, since they are to be submitted separately.
+
+```{r, results='hide'}
+# Make predictions on test
+predTrainRF <- predict(modelTrainRF, cleanTest)
+print(predTrainRF)
+```
+
